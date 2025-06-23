@@ -118,63 +118,58 @@ def enviar_mensaje():
     resultado = enviar_mensaje_telegram(chat_id)
     return jsonify(resultado), 200 if "mensaje" in resultado else 500
 
-
 @app.route('/guardar_lectura', methods=['POST'])
 def guardar_lectura():
-    """
-    Endpoint para recibir lectura del ESP32 y guardar en tabla lecturaDeterminacion.
-    JSON esperado:
-    {
-        "chat_id": "123456789",
-        "consumoLitro": 12.34
-    }
-    """
+    connection = None
+
     try:
         data = request.get_json()
+        print("📩 Datos recibidos del ESP32:", data, flush=True)
+
         chat_id = data.get("chat_id")
         consumo_litro = data.get("consumoLitro")
 
         if not chat_id or consumo_litro is None:
+            print("❌ Faltan datos: chat_id o consumoLitro", flush=True)
             return jsonify({'error': 'Faltan datos chat_id o consumoLitro'}), 400
-        
+
         # Abrir conexión
         connection = pymysql.connect(**DB_CONFIG)
+        print("✅ Conexión a BD establecida", flush=True)
 
         with connection.cursor() as cursor:
-            # Primero obtener el id del usuario
             sql_user = "SELECT id FROM usersWater WHERE chat_id = %s"
             cursor.execute(sql_user, (chat_id,))
             user = cursor.fetchone()
 
             if not user:
+                print(f"❌ Usuario no encontrado: chat_id={chat_id}", flush=True)
                 return jsonify({'error': 'Usuario no encontrado'}), 404
 
-            id_user = user['id']
+            print(f"👤 Usuario encontrado: {user}", flush=True)
 
-            # Insertar la lectura
             sql_insert = """
                 INSERT INTO lecturaDeterminacion (chat_id, consumoLitro, fechaCorte)
                 VALUES (%s, %s, NOW())
             """
             cursor.execute(sql_insert, (chat_id, consumo_litro))
-
             connection.commit()
+            print(f"✅ Lectura insertada para chat_id={chat_id}, consumo={consumo_litro}", flush=True)
 
         resultado = enviar_mensaje_telegram(chat_id)
-
-
         return jsonify({'mensaje': 'Lectura guardada', 'notificacion': resultado}), 200
-    
 
     except Exception as e:
+        print("💥 Excepción:", str(e), flush=True)
         return jsonify({'error': 'Error al guardar lectura', 'detalle': str(e)}), 500
 
     finally:
-        try:
-            connection.close()
-        except:
-            pass
-
+        if connection:
+            try:
+                connection.close()
+                print("🔒 Conexión cerrada", flush=True)
+            except:
+                print("⚠️ Error al cerrar conexión", flush=True)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)
