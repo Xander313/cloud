@@ -16,7 +16,12 @@ DB_CONFIG = {
     'cursorclass': pymysql.cursors.DictCursor
 }
 
+import requests
+import pymysql
+from datetime import datetime, timedelta
+
 def enviar_mensaje_telegram(chat_id):
+    connection = None
     try:
         connection = pymysql.connect(**DB_CONFIG)
         with connection.cursor() as cursor:
@@ -58,10 +63,8 @@ def enviar_mensaje_telegram(chat_id):
                     f"Hola <b>{nombre}</b>, el último corte ha dado los siguientes resultados:\n\n"
                     f"<b>Lectura al inicio de mes:</b> {consumo_estatico/1000:.2f} m³ \n"
                     f"<b>Última lectura:</b> {consumo_total/1000:.2f} m³ \n\n"
-                    f"<b>⚠️ADVERTENCIA⚠️</b> Has superado el límite de consumo de agua mensual de 10m³.\n\n"
-
+                    f"<b>⚠ADVERTENCIA⚠</b> Has superado el límite de consumo de agua mensual de 10m³.\n\n"
                     f"<b>Exceso de consumo:</b> {(consumo_dinamico-10000)/1000:.2f} m³ \n\n"
-
                     f"<b>A partir de ahora, cada metro cúbico tiene un recargo de $1 dólar.</b>\n\n"
                     f"<b>Corte al:</b> {fecha_envio}"
                 )
@@ -70,35 +73,50 @@ def enviar_mensaje_telegram(chat_id):
                     f"Hola <b>{nombre}</b>, el último corte ha dado los siguientes resultados:\n\n"
                     f"<b>Lectura al inicio de mes:</b> {consumo_estatico/1000:.2f} m³ \n"
                     f"<b>Última lectura:</b> {consumo_total/1000:.2f} m³ \n\n"
-                    f"<b>ℹ️ Consumo disponible:</b> {(10000-consumo_dinamico)/1000:.2f} m³ \n\n"
+                    f"<b>ℹ Consumo disponible:</b> {(10000-consumo_dinamico)/1000:.2f} m³ \n\n"
                     f"<b>Corte al:</b> {fecha_envio}"
                 )
 
             # Enviar a Telegram
             TOKEN = "7992982183:AAH2kYLicJ5zM6NrAYExc_IowviLRJ723zo"
-            url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-            payload = {
+            url_telegram = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+            payload_telegram = {
                 "chat_id": str(chat_id),
                 "text": mensaje,
                 "parse_mode": "HTML"
             }
+            response_telegram = requests.post(url_telegram, data=payload_telegram)
 
-
-
-            response = requests.post(url, data=payload)
-
+            # Guardar notificación en DB
             cursor.execute("""
                 INSERT INTO notification (chat_id, mensaje, estado)
                 VALUES (%s, %s, %s)
-            """, (chat_id, mensaje, response.status_code == 200))
-
+            """, (chat_id, mensaje, response_telegram.status_code == 200))
             connection.commit()
 
-            if response.status_code == 200:
+            # Emitir lectura vía socket.io (Node.js)
+            try:
+                socket_data = {
+                    "chat_id": chat_id,
+                    "nombre": nombre,
+                    "consumoLitro": consumo_dinamico,
+                    "lecturaInicial": consumo_estatico,
+                    "consumoLectura":consumo_actual,
+                    "consumoTotal":consumo_total,
+                    "dispositivo": "ESP32",
+                    "fecha": fecha_envio
+                }
+                response_socket = requests.post("http://192.168.100.247:3000/emitir_lectura", json=socket_data)
+                print("📡 Socket emitido:", response_socket.status_code, response_socket.text, flush=True)
+                print("📤 Enviando al socket con los siguientes datos:")
+                print(json.dumps(socket_data, indent=2), flush=True)
+            except Exception as e:
+                print("⚠️ Error al emitir por socket.io:", e, flush=True)
+
+            if response_telegram.status_code == 200:
                 return {'mensaje': 'Mensaje enviado correctamente'}
             else:
-                return {'error': 'Error al enviar mensaje', 'telegram_response': response.text}
-
+                return {'error': 'Error al enviar mensaje', 'telegram_response': response_telegram.text}
 
     except Exception as e:
         return {'error': 'Excepción en mensaje', 'detalle': str(e)}
@@ -106,7 +124,6 @@ def enviar_mensaje_telegram(chat_id):
         if connection:
             connection.close()
 
-    return {'mensaje': 'Mensaje enviado correctamente'}
 
 @app.route('/mensaje', methods=['POST'])
 def enviar_mensaje():
