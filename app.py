@@ -58,13 +58,13 @@ def enviar_mensaje_telegram(chat_id):
             now = datetime.utcnow() - timedelta(hours=5)
             fecha_envio = now.strftime("%d/%m/%Y %H:%M")
 
-            if consumo_actual >= 10000:  # 10 m³
+            if consumo_actual >= 3000:  # 10 m³
                 mensaje = (
                     f"Hola <b>{nombre}</b>, el último corte ha dado los siguientes resultados:\n\n"
                     f"<b>Lectura al inicio de mes:</b> {consumo_estatico/1000:.2f} m³ \n"
                     f"<b>Última lectura:</b> {consumo_total/1000:.2f} m³ \n\n"
                     f"<b>⚠ADVERTENCIA⚠</b> Has superado el límite de consumo de agua mensual de 10m³.\n\n"
-                    f"<b>Exceso de consumo:</b> {(consumo_dinamico-10000)/1000:.2f} m³ \n\n"
+                    f"<b>Exceso de consumo:</b> {(consumo_dinamico-3000)/1000:.2f} m³ \n\n"
                     f"<b>A partir de ahora, cada metro cúbico tiene un recargo de $1 dólar.</b>\n\n"
                     f"<b>Corte al:</b> {fecha_envio}"
                 )
@@ -73,7 +73,7 @@ def enviar_mensaje_telegram(chat_id):
                     f"Hola <b>{nombre}</b>, el último corte ha dado los siguientes resultados:\n\n"
                     f"<b>Lectura al inicio de mes:</b> {consumo_estatico/1000:.2f} m³ \n"
                     f"<b>Última lectura:</b> {consumo_total/1000:.2f} m³ \n\n"
-                    f"<b>ℹ Consumo disponible:</b> {(10000-consumo_dinamico)/1000:.2f} m³ \n\n"
+                    f"<b>ℹ Consumo disponible:</b> {(3000-consumo_dinamico)/1000:.2f} m³ \n\n"
                     f"<b>Corte al:</b> {fecha_envio}"
                 )
 
@@ -101,12 +101,11 @@ def enviar_mensaje_telegram(chat_id):
                     "nombre": nombre,
                     "consumoLitro": consumo_dinamico,
                     "lecturaInicial": consumo_estatico,
-                    "consumoLectura":consumo_actual,
                     "consumoTotal":consumo_total,
                     "dispositivo": "ESP32",
                     "fecha": fecha_envio
                 }
-                response_socket = requests.post("http://192.168.100.247:3000/emitir_lectura", json=socket_data)
+                response_socket = requests.post("http://172.16.114.50:3000/emitir_lectura", json=socket_data)
                 print("📡 Socket emitido:", response_socket.status_code, response_socket.text, flush=True)
                 print("📤 Enviando al socket con los siguientes datos:")
                 print(json.dumps(socket_data, indent=2), flush=True)
